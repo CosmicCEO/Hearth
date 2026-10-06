@@ -8,7 +8,7 @@ struct SetupView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Hearth")
                 .font(.largeTitle)
-            Text("Hearth installs a private Apache, MariaDB, and PHP for this Mac. The servers live in Application Support and listen on localhost.")
+            Text("Hearth installs a private Apache, MariaDB, and PHP for this Mac. Programs go in /opt/hearth. The database and settings stay in Application Support, and the servers listen on localhost. macOS asks once for an administrator password to create /opt/hearth.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Text("About 1 GB. \(model.portsLine) Document root \(model.documentRoot).")

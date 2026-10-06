@@ -183,4 +183,34 @@ import Testing
     #expect(!DiskRule.allowsInstall(available: 1_000_000_000, installAnyway: false))
     #expect(DiskRule.allowsInstall(available: 1_000_000_000, installAnyway: true))
     #expect(DiskRule.allowsInstall(available: 2_000_000_000, installAnyway: false))
+    #expect(DiskRule.limitingBytes(home: 9_000_000_000, prefixVolume: 1_500_000_000) == 1_500_000_000)
+    #expect(DiskRule.limitingBytes(home: 3_000_000_000, prefixVolume: 8_000_000_000) == 3_000_000_000)
+}
+
+@Test func prefixFitsBottleRelocation() {
+    #expect(HearthPrefix.path == "/opt/hearth")
+    #expect(HearthPrefix.path.count <= HearthPrefix.maximumLength)
+    #expect(HearthPrefix.path != "/opt/homebrew")
+    let paths = StackPaths(
+        support: URL(fileURLWithPath: "/Users/jerodprice/Library/Application Support/Hearth"),
+        documentRoot: URL(fileURLWithPath: "/Users/jerodprice/Sites"),
+        launchAgents: URL(fileURLWithPath: "/Users/jerodprice/Library/LaunchAgents")
+    )
+    #expect(paths.prefix.path == "/opt/hearth")
+    #expect(paths.mysqlData.path == "/Users/jerodprice/Library/Application Support/Hearth/var/mysql")
+    #expect(paths.brewCache.path == "/Users/jerodprice/Library/Application Support/Hearth/cache")
+}
+
+@Test func prefixAuthorizationAsksUnlessTheDirectoryIsWritable() {
+    #expect(PrefixAuthorization.needsAdministrator(fileExists: false, isWritable: false))
+    #expect(PrefixAuthorization.needsAdministrator(fileExists: true, isWritable: false))
+    #expect(PrefixAuthorization.needsAdministrator(fileExists: false, isWritable: true))
+    #expect(!PrefixAuthorization.needsAdministrator(fileExists: true, isWritable: true))
+    let command = PrefixAuthorization.shellCommand(uid: 501, gid: 20)
+    #expect(command == "mkdir -p /opt/hearth && chown 501:20 /opt/hearth && chmod 755 /opt/hearth")
+    #expect(!command.contains("/opt/homebrew"))
+    #expect(
+        PrefixAuthorization.appleScript(uid: 501, gid: 20)
+            == "do shell script \"mkdir -p /opt/hearth && chown 501:20 /opt/hearth && chmod 755 /opt/hearth\" with administrator privileges"
+    )
 }

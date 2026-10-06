@@ -84,7 +84,9 @@ func testDependencies(
     runner: FakeProcessRunner,
     keychain: MemoryKeychain = MemoryKeychain(),
     bytes: Int64 = 20_000_000_000,
-    busy: Set<Int> = []
+    busy: Set<Int> = [],
+    gid: gid_t = 20,
+    prefixNeedsAdministrator: @escaping @Sendable () -> Bool = { false }
 ) -> StackDependencies {
     StackDependencies(
         runner: runner,
@@ -94,7 +96,9 @@ func testDependencies(
         availableBytes: { _ in bytes },
         userName: "jerodprice",
         groupName: "staff",
-        uid: 501
+        uid: 501,
+        gid: gid,
+        prefixNeedsAdministrator: prefixNeedsAdministrator
     )
 }
 
@@ -122,6 +126,72 @@ func writeLayout(_ layout: StackLayout, to paths: StackPaths) throws {
         #expect(error == .blocked)
     }
     #expect(runner.recorded().isEmpty)
+}
+
+@Test func blockedSetupDoesNotAskForAdministrator() async throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let paths = StackPaths(
+        support: root.appending(path: "Hearth"),
+        documentRoot: root.appending(path: "Sites"),
+        launchAgents: root.appending(path: "LaunchAgents")
+    )
+    try FileManager.default.createDirectory(at: paths.mysqlSystem, withIntermediateDirectories: true)
+    let runner = FakeProcessRunner()
+    runner.handler = { _ in ProcessResult(exitCode: 1, output: "User canceled.\n") }
+    let controller = StackController(
+        paths: paths,
+        dependencies: testDependencies(runner: runner, prefixNeedsAdministrator: { true }),
+        logStore: LogStore()
+    )
+    do {
+        try await controller.install(allowLowDisk: true)
+        Issue.record("expected the blocked error")
+    } catch let error as HearthError {
+        #expect(error == .blocked)
+    }
+    #expect(runner.recorded().isEmpty)
+}
+
+@Test func deniedPrefixAuthorizationDoesNotInstallBrew() async throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let paths = StackPaths(
+        support: root.appending(path: "Hearth"),
+        documentRoot: root.appending(path: "Sites"),
+        launchAgents: root.appending(path: "LaunchAgents")
+    )
+    var layout = StackLayout.initial(
+        support: paths.support,
+        documentRoot: paths.documentRoot,
+        ports: ClaimedPorts(http: 8888, maria: 8889, fpm: 9000)
+    )
+    layout.prefix = "/Users/jerodprice/Library/Application Support/Hearth/homebrew"
+    try writeLayout(layout, to: paths)
+    let runner = FakeProcessRunner()
+    runner.handler = { call in
+        if call.executable == "/usr/bin/osascript" {
+            return ProcessResult(exitCode: 1, output: "User canceled.\n")
+        }
+        return ProcessResult(exitCode: 0, output: "")
+    }
+    let controller = StackController(
+        paths: paths,
+        dependencies: testDependencies(runner: runner, prefixNeedsAdministrator: { true }),
+        logStore: LogStore()
+    )
+    do {
+        try await controller.install(allowLowDisk: true)
+        Issue.record("expected the authorization error")
+    } catch let error as HearthError {
+        #expect(error == .phase("Check disk and ports", detail: "User canceled."))
+    }
+    let commands = runner.recorded()
+    #expect(commands.last?.executable == "/usr/bin/osascript")
+    #expect(commands.last?.arguments == ["-e", PrefixAuthorization.appleScript(uid: 501, gid: 20)])
+    #expect(!commands.contains { $0.executable == "/usr/bin/curl" || $0.executable == "/usr/bin/tar" || $0.executable.contains("brew") })
+    let saved = try JSONDecoder().decode(StackLayout.self, from: Data(contentsOf: paths.stackJSON))
+    #expect(saved.prefix == HearthPrefix.path)
 }
 
 @Test func startStackBootstrapsInOrder() async throws {

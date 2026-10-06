@@ -58,6 +58,8 @@ struct StackDependencies: Sendable {
     var userName: String
     var groupName: String
     var uid: uid_t
+    var gid: gid_t
+    var prefixNeedsAdministrator: @Sendable () -> Bool
 
     static func live() -> StackDependencies {
         StackDependencies(
@@ -71,7 +73,14 @@ struct StackDependencies: Sendable {
             },
             userName: NSUserName(),
             groupName: PortProbe.primaryGroupName(),
-            uid: getuid()
+            uid: getuid(),
+            gid: getgid(),
+            prefixNeedsAdministrator: {
+                let path = HearthPrefix.path
+                let exists = FileManager.default.fileExists(atPath: path)
+                let writable = FileManager.default.isWritableFile(atPath: path)
+                return PrefixAuthorization.needsAdministrator(fileExists: exists, isWritable: writable)
+            }
         )
     }
 }

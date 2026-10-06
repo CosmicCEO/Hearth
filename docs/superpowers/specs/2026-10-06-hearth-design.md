@@ -13,7 +13,7 @@ On a Mac that has no PHP and no MariaDB, Jerod opens Hearth, confirms setup, and
 
 ## Decisions
 
-1. **Private prefix.** The stack lives under `~/Library/Application Support/Hearth/`. Hearth uses that prefix's `brew`, never `/opt/homebrew/bin/brew`.
+1. **Private prefix.** Programs live in `/opt/hearth`. The database, configuration, logs, and cache live under `~/Library/Application Support/Hearth/`. Hearth uses `/opt/hearth/bin/brew`, never `/opt/homebrew/bin/brew`. Correction 2026-10-06: the prefix moved out of Application Support. That directory path is 61 characters, and current arm64 bottles pour only when the prefix is no longer than `/opt/homebrew` (13 characters). `/opt/hearth` is 11.
 2. **MariaDB.** The database is MariaDB, speaking the MySQL protocol. The window calls the card Database and shows the version string from `mariadbd`.
 3. **Ports.** Preferred ports are HTTP `8888`, MariaDB `8889`, and PHP-FPM `9000`. All three bind to `127.0.0.1` only.
 4. **PHP-FPM.** Apache proxies `.php` to PHP-FPM with `proxy:fcgi`. Hearth does not load `mod_php`.
@@ -51,8 +51,9 @@ Hearth still probes ports at setup time. It does not assume those ports stay fre
 ## Layout on disk
 
 ```
+/opt/hearth/                 private Homebrew prefix (brew, Apache, PHP, MariaDB)
+
 ~/Library/Application Support/Hearth/
-  homebrew/                 private Homebrew prefix
   config/httpd.conf
   config/php-fpm.conf
   config/my.cnf
@@ -83,14 +84,16 @@ Hearth still probes ports at setup time. It does not assume those ports stay fre
 ~/Sites/                     default document root
 ```
 
-`Application Support` contains a space. Every path written into `httpd.conf`, `php-fpm.conf`, and `my.cnf` is double-quoted. LaunchAgent arguments are separate plist strings, so the space is already safe there. A unit test renders each config with a prefix that contains a space and asserts the quotes.
+`Application Support` contains a space. Every path written into `httpd.conf`, `php-fpm.conf`, and `my.cnf` is double-quoted. The prefix `/opt/hearth` has no space. LaunchAgent arguments are separate plist strings, so the space is already safe there. A unit test renders each config with an Application Support path and asserts the quotes.
+
+`/opt` is owned by root. When `/opt/hearth` is missing or not writable by the current user, setup shows one administrator-password dialog and runs `mkdir -p /opt/hearth && chown <uid>:<gid> /opt/hearth && chmod 755 /opt/hearth`. If the directory already exists and is writable, setup does not ask. A blocked database does not ask and does not create the directory. After the dialog, brew and the servers run as the user. Other local accounts can execute the programs. They cannot read the database files. Hearth never installs into `/opt/homebrew`.
 
 `stack.json` is pretty-printed UTF-8, version 1:
 
 ```json
 {
   "version": 1,
-  "prefix": "/Users/jerodprice/Library/Application Support/Hearth/homebrew",
+  "prefix": "/opt/hearth",
   "documentRoot": "/Users/jerodprice/Sites",
   "httpPort": 8888,
   "mariaPort": 8889,
@@ -128,10 +131,10 @@ The setup screen is the whole window until `setupComplete` is true. A saved file
 Copy on the screen:
 
 - Title: Hearth
-- Body: Hearth installs a private Apache, MariaDB, and PHP for this Mac. The servers live in Application Support and listen on localhost.
+- Body: Hearth installs a private Apache, MariaDB, and PHP for this Mac. Programs go in /opt/hearth. The database and settings stay in Application Support, and the servers listen on localhost. macOS asks once for an administrator password to create /opt/hearth.
 - A fact line for disk, the probed ports, and the document root `~/Sites`
 
-Disk rule: if the volume holding Application Support has under 2 GB free, the Install button is disabled until the user clicks Install anyway. The UI estimate of the download is about 1 GB. Hearth does not fail the install for going over that estimate.
+Disk rule: if either the volume holding Application Support or the volume holding `/opt` has under 2 GB free, the Install button is disabled until the user clicks Install anyway. The check uses the smaller of the two free-space values. The UI estimate of the download is about 1 GB. Hearth does not fail the install for going over that estimate.
 
 Phases, in order, shown as the current phase plus a monospaced log of command output (last 4,000 lines kept):
 
@@ -204,7 +207,7 @@ FLUSH PRIVILEGES;
 
 ### Homebrew install
 
-When `prefix/bin/brew` is missing, or the file is the retired master stub that refuses every command except `update`, create the prefix directory and unpack the current Homebrew main tarball. The stub has no git checkout, so `brew update` cannot migrate it.
+When `prefix/bin/brew` is missing, or the file is the retired master stub that refuses every command except `update`, create `/opt/hearth` (asking for the administrator password when that directory is missing or not writable) and unpack the current Homebrew main tarball there. The stub has no git checkout, so `brew update` cannot migrate it. An older `stack.json` whose `prefix` is still under Application Support is rewritten to `/opt/hearth` before that unpack. The database files are not moved.
 
 ```bash
 curl -L https://github.com/Homebrew/brew/tarball/main | tar xz --strip-components 1 -C <prefix>
@@ -474,7 +477,8 @@ Service start failure leaves that card Failed and leaves the other cards as they
 
 | Test | Asserts |
 | --- | --- |
-| HTTP config | Bind address, port, quoted document root, quoted space-containing prefix, Adminer alias, FPM handler, event MPM only |
+| HTTP config | Bind address, port, quoted document root, quoted Application Support paths, Adminer alias, FPM handler, event MPM only |
+| Prefix | `/opt/hearth` is at most 13 characters and is not `/opt/homebrew`; data and cache stay under Application Support; administrator prompt only when the directory is not writable; a canceled prompt does not run brew; a blocked database does not prompt |
 | PHP-FPM config | Listen address, `daemonize = no`, pool limits |
 | MariaDB config | Port, `bind-address`, quoted datadir, `mysqlx = 0` |
 | Welcome page | Contains `phpversion()` and `/adminer.php`, does not contain `phpinfo` |

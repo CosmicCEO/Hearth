@@ -1,5 +1,31 @@
 import CryptoKit
+import Darwin
 import Foundation
+
+enum HearthPrefix {
+    // Current arm64 bottles pour only when the install prefix is at most 13 characters.
+    static let path = "/opt/hearth"
+    static let maximumLength = 13
+
+    static var url: URL { URL(fileURLWithPath: path, isDirectory: true) }
+}
+
+enum PrefixAuthorization {
+    static func needsAdministrator(fileExists: Bool, isWritable: Bool) -> Bool {
+        !(fileExists && isWritable)
+    }
+
+    static func shellCommand(uid: uid_t, gid: gid_t) -> String {
+        "mkdir -p \(HearthPrefix.path) && chown \(uid):\(gid) \(HearthPrefix.path) && chmod 755 \(HearthPrefix.path)"
+    }
+
+    static func appleScript(uid: uid_t, gid: gid_t) -> String {
+        let command = shellCommand(uid: uid, gid: gid)
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "do shell script \"\(command)\" with administrator privileges"
+    }
+}
 
 enum DesiredState: String, Codable, Equatable, Sendable {
     case running
@@ -35,7 +61,7 @@ struct StackLayout: Codable, Equatable, Sendable {
     static func initial(support: URL, documentRoot: URL, ports: ClaimedPorts) -> StackLayout {
         StackLayout(
             version: supportedVersion,
-            prefix: support.appending(path: "homebrew").path,
+            prefix: HearthPrefix.path,
             documentRoot: documentRoot.path,
             httpPort: ports.http,
             mariaPort: ports.maria,
@@ -68,7 +94,7 @@ struct StackPaths: Equatable, Sendable {
     var documentRoot: URL
     var launchAgents: URL
 
-    var prefix: URL { support.appending(path: "homebrew") }
+    var prefix: URL { HearthPrefix.url }
     var configDirectory: URL { support.appending(path: "config") }
     var httpdConf: URL { configDirectory.appending(path: "httpd.conf") }
     var phpFpmConf: URL { configDirectory.appending(path: "php-fpm.conf") }
