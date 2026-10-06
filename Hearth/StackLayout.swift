@@ -30,7 +30,7 @@ struct StackLayout: Codable, Equatable, Sendable {
     static let supportedVersion = 1
     static let adminerSHA256Pin = "cd5d65d3e85c9e1233126625232150e2de405f3d56c76fdc171f4133a401e8d2"
     static let adminerURL = "https://github.com/vrana/adminer/releases/download/v6.1.1/adminer-6.1.1-mysql-en.php"
-    static let homebrewTarballURL = "https://github.com/Homebrew/brew/tarball/master"
+    static let homebrewTarballURL = "https://github.com/Homebrew/brew/tarball/main"
 
     static func initial(support: URL, documentRoot: URL, ports: ClaimedPorts) -> StackLayout {
         StackLayout(
@@ -88,7 +88,7 @@ struct StackPaths: Equatable, Sendable {
     var sqlFile: URL { support.appending(path: "root-init.sql") }
     var clientDefaults: URL { configDirectory.appending(path: "client.cnf") }
     var brewCache: URL { support.appending(path: "cache") }
-    var homebrewTarball: URL { support.appending(path: "homebrew-master.tar.gz") }
+    var homebrewTarball: URL { support.appending(path: "homebrew.tar.gz") }
     var brewBinary: URL { prefix.appending(path: "bin/brew") }
 
     func plist(for service: HearthService) -> URL {

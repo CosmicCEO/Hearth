@@ -267,6 +267,10 @@ actor StackController {
 
         beginPhase("Install Homebrew")
         if plan.installHomebrew {
+            let retiredTarball = paths.support.appending(path: "homebrew-master.tar.gz")
+            if FileManager.default.fileExists(atPath: retiredTarball.path) {
+                try? FileManager.default.removeItem(at: retiredTarball)
+            }
             try await runOrThrow(
                 "Install Homebrew",
                 "/usr/bin/curl",
@@ -572,8 +576,9 @@ actor StackController {
     }
 
     private func installSnapshotPlan(_ layout: StackLayout) async throws -> InstallPlan {
+        let stub = brewIsMasterStub()
         var formulae = Set<String>()
-        if FileManager.default.fileExists(atPath: paths.brewBinary.path) {
+        if FileManager.default.fileExists(atPath: paths.brewBinary.path), !stub {
             let listed = await run(
                 paths.brewBinary.path,
                 ["list", "--formula"],
@@ -590,9 +595,15 @@ actor StackController {
             adminerChecksumMatches: digest == StackLayout.adminerSHA256Pin,
             dataDirectoryInitialized: FileManager.default.fileExists(atPath: paths.mysqlSystem.path),
             keychainHasPassword: (try dependencies.keychain.readPassword()) != nil,
-            passwordApplied: layout.passwordApplied
+            passwordApplied: layout.passwordApplied,
+            brewIsMasterStub: stub
         )
         return InstallPlanner.plan(snapshot)
+    }
+
+    private func brewIsMasterStub() -> Bool {
+        guard let text = try? String(contentsOf: paths.brewBinary, encoding: .utf8) else { return false }
+        return InstallPlanner.isMasterStub(text)
     }
 
     private func isBlocked(_ layout: StackLayout) throws -> Bool {

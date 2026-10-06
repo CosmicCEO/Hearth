@@ -204,10 +204,10 @@ FLUSH PRIVILEGES;
 
 ### Homebrew install
 
-When `prefix/bin/brew` is missing, create the prefix directory and unpack the current Homebrew master tarball:
+When `prefix/bin/brew` is missing, or the file is the retired master stub that refuses every command except `update`, create the prefix directory and unpack the current Homebrew main tarball. The stub has no git checkout, so `brew update` cannot migrate it.
 
 ```bash
-curl -L https://github.com/Homebrew/brew/tarball/master | tar xz --strip-components 1 -C <prefix>
+curl -L https://github.com/Homebrew/brew/tarball/main | tar xz --strip-components 1 -C <prefix>
 ```
 
 Record `brew --version` in `stack.json`.
