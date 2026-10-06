@@ -70,6 +70,23 @@ import Testing
     #expect(plan.blockedReason == nil)
 }
 
+@Test func retiredMasterHomebrewIsReinstalled() {
+    let stub = "Error: Homebrew's master branch is no longer supported.\n"
+    #expect(InstallPlanner.isMasterStub(stub))
+    #expect(!InstallPlanner.isMasterStub("Homebrew 5.0.0\n"))
+    let plan = InstallPlanner.plan(InstallSnapshot(
+        brewBinaryExists: true,
+        installedFormulae: [],
+        adminerChecksumMatches: false,
+        dataDirectoryInitialized: false,
+        keychainHasPassword: false,
+        passwordApplied: false,
+        brewIsMasterStub: true
+    ))
+    #expect(plan.installHomebrew)
+    #expect(StackLayout.homebrewTarballURL == "https://github.com/Homebrew/brew/tarball/main")
+}
+
 @Test func brewAlreadyPresentSkipsHomebrew() {
     let plan = InstallPlanner.plan(InstallSnapshot(
         brewBinaryExists: true,

@@ -10,7 +10,7 @@ Hearth is a macOS app that installs and runs a private Apache, MariaDB, and PHP 
 
 ## Install the app
 
-Download `Hearth-0.1.0.zip` from the [release](https://github.com/CosmicCEO/Hearth/releases/tag/v0.1.0), unzip it, and move `Hearth.app` where you want it. The app is ad-hoc signed. The first time you open it, right-click the icon and choose Open.
+Download `Hearth-0.1.1.zip` from the [release](https://github.com/CosmicCEO/Hearth/releases/tag/v0.1.1), unzip it, and move `Hearth.app` where you want it. The app is ad-hoc signed. The first time you open it, right-click the icon and choose Open.
 
 ## First run
 

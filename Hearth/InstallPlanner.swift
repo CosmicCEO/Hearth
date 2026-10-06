@@ -7,6 +7,7 @@ struct InstallSnapshot: Equatable, Sendable {
     var dataDirectoryInitialized: Bool
     var keychainHasPassword: Bool
     var passwordApplied: Bool
+    var brewIsMasterStub: Bool = false
 }
 
 struct InstallPlan: Equatable, Sendable {
@@ -23,13 +24,18 @@ struct InstallPlan: Equatable, Sendable {
 enum InstallPlanner {
     static let formulae = ["httpd", "php", "mariadb"]
     static let blockedMessage = "Database files exist and Hearth has no saved root password."
+    static let masterStubMarker = "Homebrew's master branch is no longer supported."
+
+    static func isMasterStub(_ text: String) -> Bool {
+        text.contains(masterStubMarker)
+    }
 
     static func plan(_ snapshot: InstallSnapshot) -> InstallPlan {
         let blocked = snapshot.dataDirectoryInitialized
             && !snapshot.keychainHasPassword
             && !snapshot.passwordApplied
         return InstallPlan(
-            installHomebrew: !snapshot.brewBinaryExists,
+            installHomebrew: !snapshot.brewBinaryExists || snapshot.brewIsMasterStub,
             formulaeToInstall: formulae.filter { !snapshot.installedFormulae.contains($0) },
             downloadAdminer: !snapshot.adminerChecksumMatches,
             generatePassword: !snapshot.dataDirectoryInitialized && !snapshot.keychainHasPassword && !blocked,
