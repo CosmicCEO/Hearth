@@ -15,6 +15,7 @@ protocol ProcessRunning: Sendable {
         onOutput: @escaping @Sendable (String) -> Void
     ) async -> ProcessResult
     func cancel()
+    func waitForExit()
 }
 
 final class LiveProcessRunner: ProcessRunning, @unchecked Sendable {
@@ -34,6 +35,13 @@ final class LiveProcessRunner: ProcessRunning, @unchecked Sendable {
         }
     }
 
+    func waitForExit() {
+        lock.lock()
+        let process = current
+        lock.unlock()
+        process?.waitUntilExit()
+    }
+
     func run(
         executable: String,
         arguments: [String],
@@ -43,7 +51,8 @@ final class LiveProcessRunner: ProcessRunning, @unchecked Sendable {
     ) async -> ProcessResult {
         await withCheckedContinuation { continuation in
             let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+            signal(SIGPIPE, SIG_IGN)
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
             process.arguments = ["-c", "set -m; exec \"$0\" \"$@\"", executable] + arguments
             var env = ProcessInfo.processInfo.environment
             for (key, value) in environment { env[key] = value }
@@ -55,6 +64,8 @@ final class LiveProcessRunner: ProcessRunning, @unchecked Sendable {
             let inputPipe = Pipe()
             if standardInput != nil {
                 process.standardInput = inputPipe
+            } else {
+                process.standardInput = FileHandle.nullDevice
             }
 
             let buffer = OutputBuffer()

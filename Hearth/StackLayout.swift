@@ -86,6 +86,7 @@ struct StackPaths: Equatable, Sendable {
     var adminerNotice: URL { adminerDirectory.appending(path: "NOTICE") }
     var stackJSON: URL { support.appending(path: "stack.json") }
     var sqlFile: URL { support.appending(path: "root-init.sql") }
+    var clientDefaults: URL { configDirectory.appending(path: "client.cnf") }
     var brewCache: URL { support.appending(path: "cache") }
     var homebrewTarball: URL { support.appending(path: "homebrew-master.tar.gz") }
     var brewBinary: URL { prefix.appending(path: "bin/brew") }

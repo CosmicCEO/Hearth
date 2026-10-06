@@ -48,11 +48,13 @@ struct AppSnapshot: Equatable, Sendable {
 actor StackController {
     private var paths: StackPaths
     private let dependencies: StackDependencies
+    private nonisolated let runner: any ProcessRunning
     private let logStore: LogStore
 
     init(paths: StackPaths, dependencies: StackDependencies, logStore: LogStore) {
         self.paths = paths
         self.dependencies = dependencies
+        self.runner = dependencies.runner
         self.logStore = logStore
     }
 
@@ -64,7 +66,19 @@ actor StackController {
         }
     }
 
+    nonisolated func cancelRunningWork() {
+        runner.cancel()
+        runner.waitForExit()
+    }
+
     func resetDatabase() async throws {
+        if let layout = try loadLayout() {
+            adopt(layout)
+            await bootout(.mariadb)
+            guard await waitUntilPortClosed(layout.mariaPort, bind: layout.bindAddress) else {
+                throw HearthError.phase("Reset database", detail: "MariaDB did not stop")
+            }
+        }
         let manager = FileManager.default
         if manager.fileExists(atPath: paths.mysqlData.path) {
             let stamp = ResetStamp.string(from: Date(), calendar: .current)
@@ -83,8 +97,15 @@ actor StackController {
         adopt(layout)
         layout.desired = .running
         try save(layout)
+        var failures: [String] = []
         for service in HearthService.startOrder {
-            try await bootstrapIfNeeded(service)
+            await setServiceEnabled(service, enabled: true)
+            if let detail = await ensureRunning(service) {
+                failures.append(detail)
+            }
+        }
+        if let detail = failures.first {
+            throw HearthError.phase("Start services", detail: detail)
         }
     }
 
@@ -94,13 +115,8 @@ actor StackController {
             try? save(layout)
         }
         for service in HearthService.stopOrder {
-            _ = await run(
-                Launchctl.executable,
-                Launchctl.bootoutArguments(uid: dependencies.uid, label: service.label),
-                environment: [:],
-                standardInput: nil,
-                logged: true
-            )
+            await setServiceEnabled(service, enabled: false)
+            await bootout(service)
         }
     }
 
@@ -118,16 +134,24 @@ actor StackController {
     }
 
     func reconcile() async {
-        guard let layout = try? loadLayout(), layout.setupComplete, layout.desired == .running else { return }
+        guard let layout = try? loadLayout(), layout.setupComplete else { return }
         adopt(layout)
-        for service in HearthService.startOrder where await launchdState(service) == .notLoaded {
-            _ = await run(
-                Launchctl.executable,
-                Launchctl.bootstrapArguments(uid: dependencies.uid, plist: paths.plist(for: service).path),
-                environment: [:],
-                standardInput: nil,
-                logged: true
-            )
+        if layout.desired == .running {
+            for service in HearthService.startOrder where await launchdState(service) == .notLoaded {
+                await setServiceEnabled(service, enabled: true)
+                _ = await run(
+                    Launchctl.executable,
+                    Launchctl.bootstrapArguments(uid: dependencies.uid, plist: paths.plist(for: service).path),
+                    environment: [:],
+                    standardInput: nil,
+                    logged: true
+                )
+            }
+            return
+        }
+        for service in HearthService.stopOrder where await launchdState(service) != .notLoaded {
+            await setServiceEnabled(service, enabled: false)
+            await bootout(service)
         }
     }
 
@@ -164,7 +188,7 @@ actor StackController {
         return password
     }
 
-    func snapshot() async -> AppSnapshot {
+    func snapshot(operationInProgress: Bool = false) async -> AppSnapshot {
         let bytes = dependencies.availableBytes(FileManager.default.homeDirectoryForCurrentUser)
         let lowDisk = bytes < DiskRule.minimumBytes
         let stored = logStore.snapshot()
@@ -180,6 +204,7 @@ actor StackController {
                 empty.httpURL = httpURL(http)
                 empty.phase = stored.phase
                 empty.log = stored.log
+                empty.statusWord = ServiceStatus.window(cards: [], operationInProgress: operationInProgress)
                 return empty
             }
             adopt(layout)
@@ -194,7 +219,7 @@ actor StackController {
                 lowDisk: lowDisk,
                 portsLine: "Web \(layout.bindAddress):\(layout.httpPort). Database \(layout.bindAddress):\(layout.mariaPort).",
                 documentRoot: layout.documentRoot,
-                statusWord: ServiceStatus.window(cards: cards.map(\.state), operationInProgress: false),
+                statusWord: ServiceStatus.window(cards: cards.map(\.state), operationInProgress: operationInProgress),
                 cards: cards,
                 httpURL: httpURL(layout.httpPort),
                 clientCommand: clientCommand(layout),
@@ -321,17 +346,30 @@ actor StackController {
 
         beginPhase("Start MariaDB, apply the root password, then start PHP-FPM and Apache")
         plan = try await installSnapshotPlan(layout)
+        layout.desired = .running
+        try save(layout)
         if plan.applyPassword {
-            try await bootstrapIfNeeded(.mariadb)
-            guard await waitForPort(layout.mariaPort, bind: layout.bindAddress) else {
+            await setServiceEnabled(.mariadb, enabled: true)
+            if await ensureRunning(.mariadb) != nil {
+                try await stopAfterFailedSetup(&layout)
                 throw HearthError.servicesDidNotStart
             }
-            try await applyPassword(layout)
+            guard await waitForPort(layout.mariaPort, bind: layout.bindAddress) else {
+                try await stopAfterFailedSetup(&layout)
+                throw HearthError.servicesDidNotStart
+            }
+            do {
+                try await applyPassword(layout)
+            } catch {
+                try await stopAfterFailedSetup(&layout)
+                throw error
+            }
             layout.passwordApplied = true
             try save(layout)
         }
         for service in HearthService.startOrder {
-            try await bootstrapIfNeeded(service)
+            await setServiceEnabled(service, enabled: true)
+            _ = await ensureRunning(service)
         }
         for service in HearthService.startOrder {
             guard await waitForPort(layout.port(for: service), bind: layout.bindAddress) else {
@@ -356,7 +394,7 @@ actor StackController {
         let socket = paths.mysqlSocket.path
         let unauthenticated = await run(
             binaries.mariadb.path,
-            ["--socket=\(socket)", "-u", "root", "--protocol=socket", "-e", "SELECT 1"],
+            MariaClient.unauthenticatedArguments(socket: socket),
             environment: brewEnvironment(),
             standardInput: nil,
             logged: true
@@ -365,13 +403,15 @@ actor StackController {
         if unauthenticated.exitCode == 0 {
             authenticatedSucceeded = false
         } else {
+            try write(paths.clientDefaults, MariaClient.defaultsText(password: password, socket: socket), permissions: 0o600)
             let authenticated = await run(
                 binaries.mariadb.path,
-                ["--socket=\(socket)", "-u", "root", "--password=\(password)", "--protocol=socket", "-e", "SELECT 1"],
+                MariaClient.authenticatedArguments(defaultsFile: paths.clientDefaults.path),
                 environment: brewEnvironment(),
                 standardInput: nil,
                 logged: false
             )
+            try? FileManager.default.removeItem(at: paths.clientDefaults)
             authenticatedSucceeded = authenticated.exitCode == 0
         }
         switch PasswordApply.decide(
@@ -383,7 +423,7 @@ actor StackController {
             try write(paths.sqlFile, PasswordSQL.sql(password: password), permissions: 0o600)
             let applied = await run(
                 binaries.mariadb.path,
-                ["--socket=\(socket)", "-u", "root", "--protocol=socket"],
+                MariaClient.sqlArguments(socket: socket),
                 environment: brewEnvironment(),
                 standardInput: sql,
                 logged: false
@@ -401,17 +441,76 @@ actor StackController {
         }
     }
 
-    private func bootstrapIfNeeded(_ service: HearthService) async throws {
-        if await launchdState(service) != .notLoaded { return }
-        let result = await run(
+    private func stopAfterFailedSetup(_ layout: inout StackLayout) async throws {
+        layout.desired = .stopped
+        try save(layout)
+        for service in HearthService.stopOrder {
+            await setServiceEnabled(service, enabled: false)
+            await bootout(service)
+        }
+    }
+
+    /// Returns a failure line when the service could not be brought up. The caller keeps walking.
+    private func ensureRunning(_ service: HearthService) async -> String? {
+        switch await launchdState(service) {
+        case .running:
+            return nil
+        case .notLoaded:
+            let result = await run(
+                Launchctl.executable,
+                Launchctl.bootstrapArguments(uid: dependencies.uid, plist: paths.plist(for: service).path),
+                environment: [:],
+                standardInput: nil,
+                logged: true
+            )
+            guard result.exitCode == 0 else {
+                let detail = TextTail.lastNonEmptyLine(result.output)
+                noteFailure(service, detail)
+                return detail.isEmpty ? "\(service.title) did not start" : detail
+            }
+            return nil
+        case .stopped:
+            let result = await run(
+                Launchctl.executable,
+                Launchctl.kickstartArguments(uid: dependencies.uid, label: service.label),
+                environment: [:],
+                standardInput: nil,
+                logged: true
+            )
+            guard result.exitCode == 0 else {
+                let detail = TextTail.lastNonEmptyLine(result.output)
+                noteFailure(service, detail)
+                return detail.isEmpty ? "\(service.title) did not start" : detail
+            }
+            return nil
+        }
+    }
+
+    private func setServiceEnabled(_ service: HearthService, enabled: Bool) async {
+        let arguments = enabled
+            ? Launchctl.enableArguments(uid: dependencies.uid, label: service.label)
+            : Launchctl.disableArguments(uid: dependencies.uid, label: service.label)
+        _ = await run(
             Launchctl.executable,
-            Launchctl.bootstrapArguments(uid: dependencies.uid, plist: paths.plist(for: service).path),
+            arguments,
             environment: [:],
             standardInput: nil,
             logged: true
         )
-        if result.exitCode != 0 {
-            throw HearthError.phase("Start services", detail: TextTail.lastNonEmptyLine(result.output))
+    }
+
+    private func noteFailure(_ service: HearthService, _ detail: String) {
+        let line = (detail.isEmpty ? "\(service.title) did not start" : detail) + "\n"
+        guard let data = line.data(using: .utf8) else { return }
+        let url = paths.stderrLog(for: service)
+        let manager = FileManager.default
+        try? manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if manager.fileExists(atPath: url.path), let handle = try? FileHandle(forWritingTo: url) {
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+            try? handle.close()
+        } else {
+            try? data.write(to: url)
         }
     }
 
@@ -577,7 +676,7 @@ actor StackController {
 
     private func clientCommand(_ layout: StackLayout) -> String {
         let binary = (try? resolve().mariadb.path) ?? paths.prefix.appending(path: "bin/mariadb").path
-        return "\(binary) --host=\(layout.bindAddress) --port=\(layout.mariaPort) -u root -p"
+        return MariaClient.shellCommand(binary: binary, host: layout.bindAddress, port: layout.mariaPort)
     }
 
     private func waitForPort(_ port: Int, bind: String) async -> Bool {
@@ -589,6 +688,17 @@ actor StackController {
             try? await Task.sleep(for: .milliseconds(200))
         }
         return await dependencies.portIsOpen(bind, port)
+    }
+
+    private func waitUntilPortClosed(_ port: Int, bind: String) async -> Bool {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(30))
+        while clock.now < deadline {
+            if Task.isCancelled { return false }
+            if await dependencies.portIsOpen(bind, port) == false { return true }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        return await dependencies.portIsOpen(bind, port) == false
     }
 
     private func brewEnvironment() -> [String: String] {

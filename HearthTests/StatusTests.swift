@@ -54,6 +54,8 @@ import Testing
     #expect(Launchctl.bootstrapArguments(uid: 501, plist: "/tmp/\(label).plist") == ["bootstrap", "gui/501", "/tmp/\(label).plist"])
     #expect(Launchctl.bootoutArguments(uid: 501, label: label) == ["bootout", "gui/501/\(label)"])
     #expect(Launchctl.kickstartArguments(uid: 501, label: label) == ["kickstart", "-k", "gui/501/\(label)"])
+    #expect(Launchctl.enableArguments(uid: 501, label: label) == ["enable", "gui/501/\(label)"])
+    #expect(Launchctl.disableArguments(uid: 501, label: label) == ["disable", "gui/501/\(label)"])
 }
 
 @Test func resetStampUsesTheGivenCalendar() {

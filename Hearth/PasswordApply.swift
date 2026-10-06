@@ -32,6 +32,38 @@ enum PasswordGenerator {
     }
 }
 
+enum MariaClient {
+    static func unauthenticatedArguments(socket: String) -> [String] {
+        ["--no-defaults", "--socket=\(socket)", "-u", "root", "--protocol=socket", "-e", "SELECT 1"]
+    }
+
+    static func authenticatedArguments(defaultsFile: String) -> [String] {
+        ["--defaults-extra-file=\(defaultsFile)", "--protocol=socket", "-e", "SELECT 1"]
+    }
+
+    static func sqlArguments(socket: String) -> [String] {
+        ["--no-defaults", "--socket=\(socket)", "-u", "root", "--protocol=socket"]
+    }
+
+    static func defaultsText(password: String, socket: String) -> String {
+        """
+        [client]
+        socket=\(socket)
+        user=root
+        password=\(password)
+        protocol=socket
+        """
+    }
+
+    static func shellQuote(_ value: String) -> String {
+        "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    static func shellCommand(binary: String, host: String, port: Int) -> String {
+        "\(shellQuote(binary)) --host=\(host) --port=\(port) -u root -p"
+    }
+}
+
 enum PasswordSQL {
     static func sql(password: String) -> String {
         """

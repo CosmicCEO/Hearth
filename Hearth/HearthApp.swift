@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -36,5 +37,8 @@ struct RootView: View {
             }
         }
         .task { await model.onAppear() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+            model.cancelForQuit()
+        }
     }
 }

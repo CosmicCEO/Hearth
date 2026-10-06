@@ -40,7 +40,21 @@ final class FakeProcessRunner: ProcessRunning, @unchecked Sendable {
         return result
     }
 
-    func cancel() {}
+    private var cancelled = false
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+    }
+
+    func wasCancelled() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return cancelled
+    }
+
+    func waitForExit() {}
 }
 
 final class MemoryKeychain: KeychainStoring, @unchecked Sendable {
@@ -60,13 +74,13 @@ final class MemoryKeychain: KeychainStoring, @unchecked Sendable {
     }
 }
 
-private func temporaryRoot() throws -> URL {
+func temporaryRoot() throws -> URL {
     let url = FileManager.default.temporaryDirectory.appending(path: "hearth-tests-\(UUID().uuidString)")
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
 
-private func testDependencies(
+func testDependencies(
     runner: FakeProcessRunner,
     keychain: MemoryKeychain = MemoryKeychain(),
     bytes: Int64 = 20_000_000_000,
@@ -84,7 +98,7 @@ private func testDependencies(
     )
 }
 
-private func writeLayout(_ layout: StackLayout, to paths: StackPaths) throws {
+func writeLayout(_ layout: StackLayout, to paths: StackPaths) throws {
     let data = try JSONEncoder().encode(layout)
     try FileManager.default.createDirectory(at: paths.stackJSON.deletingLastPathComponent(), withIntermediateDirectories: true)
     try data.write(to: paths.stackJSON)

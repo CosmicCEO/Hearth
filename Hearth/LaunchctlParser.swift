@@ -100,6 +100,14 @@ enum Launchctl {
     static func kickstartArguments(uid: uid_t, label: String) -> [String] {
         ["kickstart", "-k", "\(domain(uid))/\(label)"]
     }
+
+    static func enableArguments(uid: uid_t, label: String) -> [String] {
+        ["enable", "\(domain(uid))/\(label)"]
+    }
+
+    static func disableArguments(uid: uid_t, label: String) -> [String] {
+        ["disable", "\(domain(uid))/\(label)"]
+    }
 }
 
 enum HearthService: CaseIterable, Equatable, Sendable {

@@ -29,6 +29,7 @@ final class StackModel {
 
     private let controller: StackController
     private let logStore: LogStore
+    private var work: Task<Void, Never>?
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -60,7 +61,7 @@ final class StackModel {
         isBusy = true
         errorText = nil
         let allow = installUnlocked || !lowDisk
-        Task {
+        work = Task {
             let finished = FinishFlag()
             let installTask = Task {
                 defer { finished.mark() }
@@ -90,7 +91,7 @@ final class StackModel {
         guard !isBusy else { return }
         isBusy = true
         errorText = nil
-        Task {
+        work = Task {
             do {
                 try await controller.resetDatabase()
                 try await controller.install(allowLowDisk: true)
@@ -107,7 +108,7 @@ final class StackModel {
         isBusy = true
         errorText = nil
         let stop = ServiceStatus.primaryIsStop(cards: cards.map(\.state))
-        Task {
+        work = Task {
             do {
                 if stop {
                     await controller.stopStack()
@@ -118,21 +119,30 @@ final class StackModel {
                 errorText = error.localizedDescription
             }
             await reload()
+            await settle()
             isBusy = false
+            await reload()
         }
+    }
+
+    func cancelForQuit() {
+        work?.cancel()
+        controller.cancelRunningWork()
     }
 
     func restart(_ service: HearthService) {
         guard !isBusy else { return }
         isBusy = true
-        Task {
+        work = Task {
             do {
                 try await controller.restart(service)
             } catch {
                 errorText = error.localizedDescription
             }
             await reload()
+            await settle()
             isBusy = false
+            await reload()
         }
     }
 
@@ -195,7 +205,7 @@ final class StackModel {
     }
 
     private func reload() async {
-        let snap = await controller.snapshot()
+        let snap = await controller.snapshot(operationInProgress: isBusy)
         versionMessage = snap.versionMessage
         setupComplete = snap.setupComplete
         hasSavedStack = snap.hasSavedStack
@@ -209,6 +219,16 @@ final class StackModel {
         clientCommand = snap.clientCommand
         passwordAvailable = snap.passwordAvailable
         pullLog()
+    }
+
+    private func settle() async {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(30))
+        while clock.now < deadline {
+            await reload()
+            if !cards.contains(where: { $0.state == .starting }) { return }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
     }
 }
 
