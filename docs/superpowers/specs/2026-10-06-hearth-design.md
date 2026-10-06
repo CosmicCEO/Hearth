@@ -3,7 +3,7 @@
 Date: 2026-10-06
 Status: Waiting for review
 
-Hearth is a macOS app that installs and runs a private Apache, MariaDB, and PHP stack for local development. The daily loop matches MAMP: start the stack, open a site from a document root, connect a MySQL client, and open a database admin page.
+Hearth is a macOS app that installs and runs a private Apache, MariaDB, and PHP stack for local development. You start the stack, open a site from a document root, connect a MySQL client, and open a database admin page.
 
 This spec is the design brief. Implementation waits until this file is reviewed and an implementation plan exists.
 
@@ -34,7 +34,6 @@ These are out of scope for v1. The implementation plan should not add them.
 - Binding on anything other than `127.0.0.1`
 - A menu bar item
 - A stack update button (`brew upgrade`)
-- phpMyAdmin
 - Using `/opt/homebrew` as the prefix
 
 ## Machine facts this design assumes
