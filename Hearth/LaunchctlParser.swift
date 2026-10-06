@@ -97,6 +97,10 @@ enum Launchctl {
         ["bootout", "\(domain(uid))/\(label)"]
     }
 
+    static func bootoutIsAbsent(exitCode: Int32, output: String) -> Bool {
+        exitCode == 3 || output.contains("No such process") || output.contains("Could not find service")
+    }
+
     static func kickstartArguments(uid: uid_t, label: String) -> [String] {
         ["kickstart", "-k", "\(domain(uid))/\(label)"]
     }

@@ -251,6 +251,27 @@ func writeLayout(_ layout: StackLayout, to paths: StackPaths) throws {
     ])
 }
 
+@Test func missingServiceBootoutStaysOutOfTheLog() async throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let paths = StackPaths(
+        support: root.appending(path: "Hearth"),
+        documentRoot: root.appending(path: "Sites"),
+        launchAgents: root.appending(path: "LaunchAgents")
+    )
+    let runner = FakeProcessRunner()
+    runner.handler = { call in
+        if call.arguments.first == "bootout" {
+            return ProcessResult(exitCode: 3, output: "Boot-out failed: 3: No such process\n")
+        }
+        return ProcessResult(exitCode: 0, output: "")
+    }
+    let store = LogStore()
+    let controller = StackController(paths: paths, dependencies: testDependencies(runner: runner), logStore: store)
+    await controller.stopStack()
+    #expect(!store.snapshot().log.contains("Boot-out failed"))
+}
+
 @Test func runningAgentIsNotBootstrappedAgain() async throws {
     let root = try temporaryRoot()
     defer { try? FileManager.default.removeItem(at: root) }

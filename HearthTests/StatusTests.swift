@@ -56,6 +56,9 @@ import Testing
     #expect(Launchctl.kickstartArguments(uid: 501, label: label) == ["kickstart", "-k", "gui/501/\(label)"])
     #expect(Launchctl.enableArguments(uid: 501, label: label) == ["enable", "gui/501/\(label)"])
     #expect(Launchctl.disableArguments(uid: 501, label: label) == ["disable", "gui/501/\(label)"])
+    #expect(Launchctl.bootoutIsAbsent(exitCode: 3, output: "Boot-out failed: 3: No such process\n"))
+    #expect(Launchctl.bootoutIsAbsent(exitCode: 0, output: "Could not find service \"example\" in domain"))
+    #expect(!Launchctl.bootoutIsAbsent(exitCode: 5, output: "Boot-out failed: 5: Input/output error\n"))
 }
 
 @Test func resetStampUsesTheGivenCalendar() {

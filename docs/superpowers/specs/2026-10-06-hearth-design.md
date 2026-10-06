@@ -313,13 +313,14 @@ bind-address = 127.0.0.1
 socket = "<var>/run/mysql.sock"
 pid-file = "<var>/run/mariadb.pid"
 log_error = "<logs>/mariadb-error.log"
-mysqlx = 0
 skip-name-resolve
 
 [client]
 port = <mariaPort>
 socket = "<var>/run/mysql.sock"
 ```
+
+MariaDB 13 rejects `mysqlx`. That server does not load the interface the option was meant to turn off, so `my.cnf` omits it.
 
 `mariadb-install-db` arguments: `--datadir=<var>/mysql`, `--auth-root-authentication-method=normal`, `--skip-test-db`.
 
@@ -480,7 +481,7 @@ Service start failure leaves that card Failed and leaves the other cards as they
 | HTTP config | Bind address, port, quoted document root, quoted Application Support paths, Adminer alias, FPM handler, event MPM only |
 | Prefix | `/opt/hearth` is at most 13 characters and is not `/opt/homebrew`; data and cache stay under Application Support; administrator prompt only when the directory is not writable; a canceled prompt does not run brew; a blocked database does not prompt |
 | PHP-FPM config | Listen address, `daemonize = no`, pool limits |
-| MariaDB config | Port, `bind-address`, quoted datadir, `mysqlx = 0` |
+| MariaDB config | Port, `bind-address`, quoted datadir, no `mysqlx` option |
 | Welcome page | Contains `phpversion()` and `/adminer.php`, does not contain `phpinfo` |
 | Port planner | Preferred ports when free; upward scan; skip claimed ports; failure after 20 busy ports |
 | Launchctl parser | `running`, other state text, non-zero exit |
