@@ -524,13 +524,16 @@ actor StackController {
     }
 
     private func bootout(_ service: HearthService) async {
-        _ = await run(
+        let result = await run(
             Launchctl.executable,
             Launchctl.bootoutArguments(uid: dependencies.uid, label: service.label),
             environment: [:],
             standardInput: nil,
-            logged: true
+            logged: false
         )
+        if result.exitCode != 0 && !Launchctl.bootoutIsAbsent(exitCode: result.exitCode, output: result.output) {
+            logStore.append(result.output.hasSuffix("\n") ? result.output : result.output + "\n")
+        }
     }
 
     private func launchdState(_ service: HearthService) async -> LaunchdState {

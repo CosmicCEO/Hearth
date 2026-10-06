@@ -131,7 +131,6 @@ enum ConfigRenderer {
         socket = \(quote(input.socketPath))
         pid-file = \(quote(input.pidFile))
         log_error = \(quote(input.errorLog))
-        mysqlx = 0
         skip-name-resolve
 
         [client]

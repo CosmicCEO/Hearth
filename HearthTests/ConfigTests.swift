@@ -53,7 +53,7 @@ private func sampleHTTP() -> HTTPConfig {
     #expect(config.contains("\"/Users/jerodprice/Library/Application Support/Hearth/logs/php-fpm.log\""))
 }
 
-@Test func mariaConfigBindsLocallyAndDisablesMySQLX() {
+@Test func mariaConfigBindsLocally() {
     let config = ConfigRenderer.myCnf(MariaConfig(
         dataDirectory: "/Users/jerodprice/Library/Application Support/Hearth/var/mysql",
         port: 8889,
@@ -64,7 +64,7 @@ private func sampleHTTP() -> HTTPConfig {
     #expect(config.contains("port = 8889"))
     #expect(config.contains("bind-address = 127.0.0.1"))
     #expect(config.contains("datadir = \"/Users/jerodprice/Library/Application Support/Hearth/var/mysql\""))
-    #expect(config.contains("mysqlx = 0"))
+    #expect(!config.contains("mysqlx"))
 }
 
 @Test func welcomePageShowsThePHPVersionAndAdminer() {
