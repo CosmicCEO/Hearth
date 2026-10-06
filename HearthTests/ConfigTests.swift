@@ -135,7 +135,7 @@ private func sampleHTTP() -> HTTPConfig {
     #expect(decoded == layout)
     #expect(layout.desired == .stopped)
     #expect(!layout.setupComplete)
-    #expect(layout.prefix == "/Users/jerodprice/Library/Application Support/Hearth/homebrew")
+    #expect(layout.prefix == "/opt/hearth")
     var newer = layout
     newer.version = 2
     #expect(throws: HearthError.newerVersion) {

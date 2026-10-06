@@ -1,26 +1,27 @@
 # Hearth
 
-Hearth is a macOS app that installs and runs a private Apache, MariaDB, and PHP stack for local development. The servers live in Application Support and listen on localhost. Hearth does not use the system Apache or the Homebrew install at `/opt/homebrew`.
+Hearth is a macOS app that installs and runs a private Apache, MariaDB, and PHP stack for local development. Programs go in `/opt/hearth`. The database and settings stay in Application Support, and the servers listen on localhost. Hearth does not use the system Apache or the Homebrew install at `/opt/homebrew`.
 
 ## Requirements
 
 - macOS 15 or later
-- About 1 GB for the first install, and at least 2 GB free on the volume that holds Application Support (Install stays disabled below that until you choose Install anyway)
+- About 1 GB for the first install, and at least 2 GB free on the volume that holds Application Support and on the volume that holds `/opt` (Install stays disabled when either is below that until you choose Install anyway)
 - A network connection for the first install
 
 ## Install the app
 
-Download `Hearth-0.1.1.zip` from the [release](https://github.com/CosmicCEO/Hearth/releases/tag/v0.1.1), unzip it, and move `Hearth.app` where you want it. The app is ad-hoc signed. The first time you open it, right-click the icon and choose Open.
+Download `Hearth-0.1.2.zip` from the [release](https://github.com/CosmicCEO/Hearth/releases/tag/v0.1.2), unzip it, and move `Hearth.app` where you want it. The app is ad-hoc signed. The first time you open it, right-click the icon and choose Open.
 
 ## First run
 
-Hearth shows a setup screen until the stack is actually up. Install downloads a private Homebrew prefix, then Apache, PHP, and MariaDB, saves a MariaDB root password in the Keychain, and starts the three servers.
+Hearth shows a setup screen until the stack is actually up. Install downloads a private Homebrew prefix, then Apache, PHP, and MariaDB, saves a MariaDB root password in the Keychain, and starts the three servers. The first install asks for an administrator password once, to create `/opt/hearth` and give that directory to your account. If you cancel, setup stops and nothing is installed.
 
 Default locations:
 
 | | |
 |---|---|
-| Prefix, config, and data | `~/Library/Application Support/Hearth` |
+| Programs | `/opt/hearth` |
+| Database, config, and logs | `~/Library/Application Support/Hearth` |
 | Document root | `~/Sites` |
 | Web | `http://127.0.0.1:8888/` |
 | Database admin | `http://127.0.0.1:8888/adminer.php` |

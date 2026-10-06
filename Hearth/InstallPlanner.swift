@@ -53,4 +53,8 @@ enum DiskRule {
     static func allowsInstall(available: Int64, installAnyway: Bool) -> Bool {
         available >= minimumBytes || installAnyway
     }
+
+    static func limitingBytes(home: Int64, prefixVolume: Int64) -> Int64 {
+        min(home, prefixVolume)
+    }
 }

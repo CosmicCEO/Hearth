@@ -189,7 +189,7 @@ actor StackController {
     }
 
     func snapshot(operationInProgress: Bool = false) async -> AppSnapshot {
-        let bytes = dependencies.availableBytes(FileManager.default.homeDirectoryForCurrentUser)
+        let bytes = freeBytes()
         let lowDisk = bytes < DiskRule.minimumBytes
         let stored = logStore.snapshot()
         do {
@@ -242,7 +242,7 @@ actor StackController {
 
     private func performInstall(allowLowDisk: Bool) async throws {
         beginPhase("Check disk and ports")
-        let bytes = dependencies.availableBytes(FileManager.default.homeDirectoryForCurrentUser)
+        let bytes = freeBytes()
         guard DiskRule.allowsInstall(available: bytes, installAnyway: allowLowDisk) else {
             throw HearthError.lowDisk
         }
@@ -261,6 +261,11 @@ actor StackController {
             try save(layout)
         }
         if try isBlocked(layout) { throw HearthError.blocked }
+        if layout.prefix != HearthPrefix.path {
+            layout.prefix = HearthPrefix.path
+            try save(layout)
+        }
+        try await ensurePrefix()
 
         var plan = try await installSnapshotPlan(layout)
         try Task.checkCancellation()
@@ -712,6 +717,38 @@ actor StackController {
         return await dependencies.portIsOpen(bind, port) == false
     }
 
+    private func freeBytes() -> Int64 {
+        DiskRule.limitingBytes(
+            home: dependencies.availableBytes(FileManager.default.homeDirectoryForCurrentUser),
+            prefixVolume: dependencies.availableBytes(URL(fileURLWithPath: "/opt", isDirectory: true))
+        )
+    }
+
+    private func ensurePrefix() async throws {
+        if dependencies.prefixNeedsAdministrator() {
+            logStore.append("macOS will ask for an administrator password to create \(HearthPrefix.path).\n")
+            let result = await run(
+                "/usr/bin/osascript",
+                ["-e", PrefixAuthorization.appleScript(uid: dependencies.uid, gid: dependencies.gid)],
+                environment: [:],
+                standardInput: nil,
+                logged: true
+            )
+            if result.exitCode != 0 {
+                let detail = TextTail.lastNonEmptyLine(result.output)
+                throw HearthError.phase(
+                    "Check disk and ports",
+                    detail: detail.isEmpty ? "permission was not granted" : detail
+                )
+            }
+        }
+        do {
+            try FileManager.default.createDirectory(at: paths.prefix, withIntermediateDirectories: true)
+        } catch {
+            throw HearthError.phase("Check disk and ports", detail: error.localizedDescription)
+        }
+    }
+
     private func brewEnvironment() -> [String: String] {
         let prefix = paths.prefix.path
         let base = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin:/usr/sbin:/sbin"
@@ -727,7 +764,7 @@ actor StackController {
     private func ensureSetupDirectories() throws {
         let manager = FileManager.default
         let urls = [
-            paths.support, paths.prefix, paths.configDirectory, paths.runDirectory, paths.logs,
+            paths.support, paths.configDirectory, paths.runDirectory, paths.logs,
             paths.adminerDirectory, paths.launchAgents, paths.documentRoot, paths.brewCache,
             paths.mysqlData.deletingLastPathComponent(),
         ]
