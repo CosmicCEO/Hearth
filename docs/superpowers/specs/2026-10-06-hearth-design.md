@@ -1,7 +1,7 @@
 # Hearth v1
 
 Date: 2026-10-06
-Status: Waiting for review
+Status: Approved
 
 Hearth is a macOS app that installs and runs a private Apache, MariaDB, and PHP stack for local development. You start the stack, open a site from a document root, connect a MySQL client, and open a database admin page.
 
