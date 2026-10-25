@@ -19,6 +19,10 @@ enum PrefixAuthorization {
         "mkdir -p \(HearthPrefix.path) && chown \(uid):\(gid) \(HearthPrefix.path) && chmod 755 \(HearthPrefix.path)"
     }
 
+    static var removeAppleScript: String {
+        "do shell script \"rmdir \(HearthPrefix.path)\" with administrator privileges"
+    }
+
     static func appleScript(uid: uid_t, gid: gid_t) -> String {
         let command = shellCommand(uid: uid, gid: gid)
             .replacingOccurrences(of: "\\", with: "\\\\")
@@ -93,8 +97,8 @@ struct StackPaths: Equatable, Sendable {
     var support: URL
     var documentRoot: URL
     var launchAgents: URL
+    var prefix: URL = HearthPrefix.url
 
-    var prefix: URL { HearthPrefix.url }
     var configDirectory: URL { support.appending(path: "config") }
     var httpdConf: URL { configDirectory.appending(path: "httpd.conf") }
     var phpFpmConf: URL { configDirectory.appending(path: "php-fpm.conf") }
@@ -146,7 +150,7 @@ struct StackPaths: Equatable, Sendable {
     }
 
     func with(documentRoot: URL) -> StackPaths {
-        StackPaths(support: support, documentRoot: documentRoot, launchAgents: launchAgents)
+        StackPaths(support: support, documentRoot: documentRoot, launchAgents: launchAgents, prefix: prefix)
     }
 }
 
