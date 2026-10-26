@@ -26,6 +26,7 @@ final class StackModel {
     var logTitle = ""
     var logBody = ""
     var pickingFolder = false
+    var confirmingUninstall = false
 
     private let controller: StackController
     private let logStore: LogStore
@@ -95,6 +96,21 @@ final class StackModel {
             do {
                 try await controller.resetDatabase()
                 try await controller.install(allowLowDisk: true)
+            } catch {
+                errorText = error.localizedDescription
+            }
+            await reload()
+            isBusy = false
+        }
+    }
+
+    func uninstall() {
+        guard !isBusy else { return }
+        isBusy = true
+        errorText = nil
+        work = Task {
+            do {
+                try await controller.uninstall()
             } catch {
                 errorText = error.localizedDescription
             }

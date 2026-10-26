@@ -72,6 +72,12 @@ final class MemoryKeychain: KeychainStoring, @unchecked Sendable {
         defer { lock.unlock() }
         return password
     }
+
+    func deletePassword() throws {
+        lock.lock()
+        password = nil
+        lock.unlock()
+    }
 }
 
 func temporaryRoot() throws -> URL {
@@ -86,12 +92,13 @@ func testDependencies(
     bytes: Int64 = 20_000_000_000,
     busy: Set<Int> = [],
     gid: gid_t = 20,
+    portIsOpen: @escaping @Sendable (String, Int) async -> Bool = { _, _ in true },
     prefixNeedsAdministrator: @escaping @Sendable () -> Bool = { false }
 ) -> StackDependencies {
     StackDependencies(
         runner: runner,
         keychain: keychain,
-        portIsOpen: { _, _ in true },
+        portIsOpen: portIsOpen,
         busyPorts: { _ in busy },
         availableBytes: { _ in bytes },
         userName: "jerodprice",
@@ -297,4 +304,89 @@ func writeLayout(_ layout: StackLayout, to paths: StackPaths) throws {
     let controller = StackController(paths: paths, dependencies: testDependencies(runner: runner), logStore: LogStore())
     try await controller.startStack()
     #expect(runner.recorded().filter { $0.arguments.first == "bootstrap" }.isEmpty)
+}
+
+@Test func uninstallRemovesInstalledFilesAndKeepsDocumentRoot() async throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let paths = StackPaths(
+        support: root.appending(path: "Hearth"),
+        documentRoot: root.appending(path: "Sites"),
+        launchAgents: root.appending(path: "LaunchAgents"),
+        prefix: root.appending(path: "prefix")
+    )
+    let manager = FileManager.default
+    try manager.createDirectory(at: paths.prefix.appending(path: "bin"), withIntermediateDirectories: true)
+    try manager.createDirectory(at: paths.mysqlData, withIntermediateDirectories: true)
+    try manager.createDirectory(at: paths.documentRoot, withIntermediateDirectories: true)
+    try manager.createDirectory(at: paths.launchAgents, withIntermediateDirectories: true)
+    let site = paths.documentRoot.appending(path: "index.php")
+    try "<?php".write(to: site, atomically: true, encoding: .utf8)
+    let unrelated = paths.launchAgents.appending(path: "com.example.other.plist")
+    try "x".write(to: unrelated, atomically: true, encoding: .utf8)
+    for service in HearthService.allCases {
+        try "x".write(to: paths.plist(for: service), atomically: true, encoding: .utf8)
+    }
+    let layout = StackLayout.initial(
+        support: paths.support,
+        documentRoot: paths.documentRoot,
+        ports: ClaimedPorts(http: 8888, maria: 8889, fpm: 9000)
+    )
+    try writeLayout(layout, to: paths)
+    let keychain = MemoryKeychain()
+    try keychain.save(password: "secret")
+    let runner = FakeProcessRunner()
+    let controller = StackController(
+        paths: paths,
+        dependencies: testDependencies(runner: runner, keychain: keychain, portIsOpen: { _, _ in false }),
+        logStore: LogStore()
+    )
+    try await controller.uninstall()
+    #expect(!manager.fileExists(atPath: paths.support.path))
+    #expect(!manager.fileExists(atPath: paths.prefix.path))
+    for service in HearthService.allCases {
+        #expect(!manager.fileExists(atPath: paths.plist(for: service).path))
+    }
+    #expect(manager.fileExists(atPath: unrelated.path))
+    #expect(manager.fileExists(atPath: site.path))
+    #expect(try keychain.readPassword() == nil)
+    let labels = runner.recorded().filter { $0.arguments.first == "bootout" }.map { $0.arguments.last ?? "" }
+    #expect(labels == [
+        "gui/501/com.jerodprice.hearth.httpd",
+        "gui/501/com.jerodprice.hearth.php-fpm",
+        "gui/501/com.jerodprice.hearth.mariadb",
+    ])
+}
+
+@Test func uninstallKeepsDataWhenMariaDBStaysUp() async throws {
+    let root = try temporaryRoot()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let paths = StackPaths(
+        support: root.appending(path: "Hearth"),
+        documentRoot: root.appending(path: "Sites"),
+        launchAgents: root.appending(path: "LaunchAgents"),
+        prefix: root.appending(path: "prefix")
+    )
+    try FileManager.default.createDirectory(at: paths.mysqlData, withIntermediateDirectories: true)
+    let layout = StackLayout.initial(
+        support: paths.support,
+        documentRoot: paths.documentRoot,
+        ports: ClaimedPorts(http: 8888, maria: 8889, fpm: 9000)
+    )
+    try writeLayout(layout, to: paths)
+    let keychain = MemoryKeychain()
+    try keychain.save(password: "secret")
+    let controller = StackController(
+        paths: paths,
+        dependencies: testDependencies(runner: FakeProcessRunner(), keychain: keychain),
+        logStore: LogStore()
+    )
+    do {
+        try await controller.uninstall()
+        Issue.record("expected the MariaDB error")
+    } catch let error as HearthError {
+        #expect(error == .phase("Uninstall", detail: "MariaDB did not stop"))
+    }
+    #expect(FileManager.default.fileExists(atPath: paths.mysqlData.path))
+    #expect(try keychain.readPassword() == "secret")
 }

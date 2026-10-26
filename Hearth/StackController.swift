@@ -92,6 +92,49 @@ actor StackController {
         }
     }
 
+    /// Removes everything the install created except the app and the document root.
+    func uninstall() async throws {
+        guard paths.prefix.pathComponents.count >= 3, paths.support.pathComponents.count >= 3 else {
+            throw HearthError.phase("Uninstall", detail: "refusing to remove a top-level folder")
+        }
+        let layout = try? loadLayout()
+        beginPhase("Stop services")
+        for service in HearthService.stopOrder {
+            await setServiceEnabled(service, enabled: false)
+            await bootout(service)
+        }
+        if let layout, await waitUntilPortClosed(layout.mariaPort, bind: layout.bindAddress) == false {
+            throw HearthError.phase("Uninstall", detail: "MariaDB did not stop")
+        }
+
+        beginPhase("Remove files")
+        let manager = FileManager.default
+        for service in HearthService.allCases where manager.fileExists(atPath: paths.plist(for: service).path) {
+            try manager.removeItem(at: paths.plist(for: service))
+        }
+        try removeContents(of: paths.prefix)
+        if manager.fileExists(atPath: paths.support.path) {
+            try manager.removeItem(at: paths.support)
+        }
+        try dependencies.keychain.deletePassword()
+
+        if manager.fileExists(atPath: paths.prefix.path) {
+            let result = await run(
+                "/usr/bin/osascript",
+                ["-e", PrefixAuthorization.removeAppleScript],
+                environment: [:],
+                standardInput: nil,
+                logged: true
+            )
+            if result.exitCode != 0 {
+                throw HearthError.phase(
+                    "Uninstall",
+                    detail: "\(HearthPrefix.path) is empty but still there; remove it with: sudo rmdir \(HearthPrefix.path)"
+                )
+            }
+        }
+    }
+
     func startStack() async throws {
         guard var layout = try loadLayout() else { throw HearthError.missing("stack.json") }
         adopt(layout)
@@ -762,6 +805,16 @@ actor StackController {
             "HOMEBREW_CACHE": paths.brewCache.path,
             "PATH": "\(prefix)/bin:\(prefix)/sbin:\(base)",
         ]
+    }
+
+    private func removeContents(of directory: URL) throws {
+        let manager = FileManager.default
+        guard manager.fileExists(atPath: directory.path) else { return }
+        for item in try manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
+            try manager.removeItem(at: item)
+        }
+        // /opt is root-owned, so the folder itself may need the administrator step.
+        try? manager.removeItem(at: directory)
     }
 
     private func ensureSetupDirectories() throws {

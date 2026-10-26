@@ -19,6 +19,9 @@ struct DashboardView: View {
             HStack {
                 Button("Open site") { model.openSite() }
                 Button("Reveal folder") { model.revealFolder() }
+                Spacer()
+                Button("Uninstall…") { model.confirmingUninstall = true }
+                    .disabled(model.isBusy)
             }
             if let error = model.errorText {
                 Text(error).foregroundStyle(.red)

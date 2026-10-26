@@ -39,6 +39,11 @@ struct SetupView: View {
                             .disabled(model.isBusy || (model.lowDisk && !model.installUnlocked))
                     }
                 }
+                if model.hasSavedStack {
+                    Spacer()
+                    Button("Uninstall…") { model.confirmingUninstall = true }
+                        .disabled(model.isBusy)
+                }
             }
             if model.isBusy || !model.log.isEmpty {
                 Text(model.phase)

@@ -4,6 +4,7 @@ import Security
 protocol KeychainStoring: Sendable {
     func save(password: String) throws
     func readPassword() throws -> String?
+    func deletePassword() throws
 }
 
 struct KeychainStore: KeychainStoring {
@@ -33,6 +34,13 @@ struct KeychainStore: KeychainStoring {
             throw HearthError.keychain("\(status)")
         }
         return password
+    }
+
+    func deletePassword() throws {
+        let status = SecItemDelete(baseQuery() as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw HearthError.keychain("\(status)")
+        }
     }
 
     private func baseQuery() -> [String: Any] {
